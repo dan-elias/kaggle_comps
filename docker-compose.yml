@@ -1,0 +1,12 @@
+services:
+    main:
+        build: .
+        shm_size: '1gb'
+        environment:
+            - DISPLAY
+        volumes:
+            - ~/dat/kaggle_comps:/home/normaluser/dat:rw
+            - ./project:/home/normaluser/project:rw
+            - /tmp/.X11-unix:/tmp/.X11-unix:ro
+            - ~/.kaggle:/home/normaluser/.kaggle:ro
+            - ~/cache:/home/normaluser/cache:rw

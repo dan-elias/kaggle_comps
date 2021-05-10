@@ -1,0 +1,73 @@
+configfile: 'config.yml'
+
+import datetime
+import json
+import pathlib
+import pprint
+from urllib.request import urlretrieve
+import warnings
+
+import papermill
+
+paths = {'dat_root': pathlib.Path(config['dat_root']).expanduser(),
+         'workflow': pathlib.Path().absolute()}
+paths.update({k: paths['dat_root']/k for k in ['comps', 'flags']})
+paths.update({k: paths['workflow']/'notebooks'/k for k in ['tasks', 'report_templates']})
+
+
+def path_with_existing_parent(p):
+    result = pathlib.Path(p)
+    result.parent.mkdir(parents=True, exist_ok=True)
+    return result
+
+def json_read(source_file):
+    with pathlib.Path(source_file).expanduser().open('r') as in_stream:
+        return json.load(in_stream)
+
+rule update_comp_descriptions:
+    '''
+    Download raw json descriptions for any new competitions
+    '''
+    input:
+        paths['tasks']/'update_raw_descriptions.ipynb'
+    output:
+        paths['flags']/f'comp_description_updates/{datetime.date.today()}'
+    run:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            papermill.execute_notebook(input[0], '/dev/null', {'comps_root': str(paths['comps']), 'flag_file': str(output[0])})
+
+
+rule raw_comp_leaderboard:
+    '''
+    Download a competition's full leaderboard
+    '''
+    input:
+        paths['comps']/'{competition_ref}/raw/description.json'
+    output:
+        paths['comps']/'{competition_ref}/raw/publicleaderboarddata.zip'
+    run:
+        competition_number = json_read(input[0])['id']
+        urlretrieve(f'https://www.kaggle.com/c/{competition_number}/publicleaderboarddata.zip', path_with_existing_parent(output[0]))
+
+
+rule raw_comp_files:
+    '''
+    Download the list of current competitions
+    '''
+    output:
+        paths['comps']/'{competition_ref}/raw/files.zip'
+    run:
+        dest = path_with_existing_parent(output[0])
+        shell(f'kaggle competitions download --path={dest.parent} {wildcards.competition_ref}')
+        pathlib.Path(f'{dest.parent}/{wildcards.competition_ref}.zip').rename(dest)
+
+
+rule workflow_report:
+    output:
+        paths['workflow']/'reports/workflow.html'
+    shell:
+        '''
+        snakemake --report {output[0]}
+        #open {output[0]}
+        '''
